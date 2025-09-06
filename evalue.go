@@ -16,12 +16,12 @@ import (
 	"math/rand/v2"
 	"slices"
 
+	"gonum.org/v1/exp/root"
+	"gonum.org/v1/gonum/mathext"
 	"gonum.org/v1/gonum/stat"
 	"gonum.org/v1/gonum/stat/distuv"
 
 	edistuv "github.com/fumin/evalue/distuv"
-	"github.com/fumin/evalue/gonum.org/v1/exp/root"
-	"github.com/fumin/evalue/gonum.org/v1/gonum/mathext"
 )
 
 // notStopped represents the non-existent stopping time of an experiment

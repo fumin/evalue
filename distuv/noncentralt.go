@@ -10,10 +10,9 @@ import (
 	"math"
 	"math/rand/v2"
 
+	"gonum.org/v1/exp/root"
 	"gonum.org/v1/gonum/mathext"
 	"gonum.org/v1/gonum/stat/distuv"
-
-	"github.com/fumin/evalue/gonum.org/v1/exp/root"
 )
 
 // NoncentralT is the noncentral t-distribution.
