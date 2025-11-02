@@ -20,8 +20,6 @@ import (
 	"gonum.org/v1/gonum/mathext"
 	"gonum.org/v1/gonum/stat"
 	"gonum.org/v1/gonum/stat/distuv"
-
-	edistuv "github.com/fumin/evalue/distuv"
 )
 
 // notStopped represents the non-existent stopping time of an experiment
@@ -91,36 +89,14 @@ func (p *Mom) CI(x, y []float64, alpha float64) [2]float64 {
 
 // GetNPlanOptions are options for GetNPlan.
 type GetNPlanOptions struct {
-	ratio      float64
-	numSamples int
-	rsrc       rand.Source
-}
+	// Ratio is the size ratio between the two groups in our sample.
+	Ratio float64
 
-// NewGetNPlanOptions returns the default GetNPlan options.
-func NewGetNPlanOptions() GetNPlanOptions {
-	return GetNPlanOptions{
-		ratio:      1,
-		numSamples: 1000,
-		rsrc:       rand.NewChaCha8([32]byte{0x01, 0x08, 0x02, 0x08, 0x83, 0x15, 0x07, 0x19, 0x64, 0x7a, 0x64, 0x5f, 0x71, 0x7e, 0x07, 0x01, 0xd9, 0x80, 0x61, 0xed, 0xce, 0xaa, 0x4e, 0xf2, 0x2f, 0x36, 0xb5, 0x18, 0x82, 0x85, 0x07, 0x01}),
-	}
-}
+	// NumSimulations is the number of simulations performed.
+	NumSimulations int
 
-// Ratio sets the ratio n1/n2.
-func (opt GetNPlanOptions) Ratio(ratio float64) GetNPlanOptions {
-	opt.ratio = ratio
-	return opt
-}
-
-// NumSamples sets the number of samples in simulation.
-func (opt GetNPlanOptions) NumSamples(n int) GetNPlanOptions {
-	opt.numSamples = n
-	return opt
-}
-
-// RandSource sets the random source.
-func (opt GetNPlanOptions) RandSource(rsrc rand.Source) GetNPlanOptions {
-	opt.rsrc = rsrc
-	return opt
+	// RandSource is the random source used in simulations.
+	Rsrc rand.Source
 }
 
 // NPlan is the planned sample size of an experiment.
@@ -142,31 +118,40 @@ type NPlan struct {
 // alpha is the significance level, and beta is one minus statistical power.
 // deltaMin is a lower bound of the true effect size based on domain knowledge.
 func GetNPlan(alpha, beta, deltaMin float64, options ...GetNPlanOptions) NPlan {
-	opt := NewGetNPlanOptions()
+	var opt GetNPlanOptions
 	if len(options) > 0 {
 		opt = options[0]
+	}
+	if opt.Ratio == 0 {
+		opt.Ratio = 1
+	}
+	if opt.NumSimulations == 0 {
+		opt.NumSimulations = 1000
+	}
+	if opt.Rsrc == nil {
+		opt.Rsrc = rand.NewChaCha8([32]byte{0x01, 0x08, 0x02, 0x08, 0x83, 0x15, 0x07, 0x19, 0x64, 0x7a, 0x64, 0x5f, 0x71, 0x7e, 0x07, 0x01, 0xd9, 0x80, 0x61, 0xed, 0xce, 0xaa, 0x4e, 0xf2, 0x2f, 0x36, 0xb5, 0x18, 0x82, 0x85, 0x07, 0x01})
 	}
 
 	// Bound the length of a simulation by the sample size in batch mode.
 	// Experiments with early stopping always need smaller sample sizes than those in batch mode which are done without early stopping.
 	p := NewMom(deltaMin)
-	nPlanBatch1, nPlanBatch2 := getNPlanBatch(alpha, beta, deltaMin, opt.ratio, p)
+	nPlanBatch1, nPlanBatch2 := getNPlanBatch(alpha, beta, deltaMin, opt.Ratio, p)
 	nPlan := NPlan{Batch: nPlanBatch1}
 
 	// Interpolate n1 and n2.
 	var n1Vector, n2Vector []int
 	for i := 1; i <= nPlanBatch1; i++ {
 		n1Vector = append(n1Vector, i)
-		n2Vector = append(n2Vector, int(math.Ceil(opt.ratio*float64(i))))
+		n2Vector = append(n2Vector, int(math.Ceil(opt.Ratio*float64(i))))
 	}
 
 	// Simulation experiments.
-	rnd := rand.New(opt.rsrc)
+	rnd := rand.New(opt.Rsrc)
 	sampleLen := max(nPlanBatch1, nPlanBatch2)
 	sample1, sample2 := make([]float64, sampleLen), make([]float64, sampleLen)
 	interpolate1 := newInterpolator(len(n1Vector), len(sample1))
 	interpolate2 := newInterpolator(len(n2Vector), len(sample2))
-	for range opt.numSamples {
+	for range opt.NumSimulations {
 		// Generate simulation data.
 		for i := range sampleLen {
 			sample1[i] = deltaMin/2 + rnd.NormFloat64()
@@ -271,7 +256,7 @@ func getNPlanBatch(alpha, beta, delta, ratio float64, p *Mom) (int, int) {
 	delta = math.Abs(delta)
 	f := func(nEff float64) float64 {
 		nu := math.Pow(1+ratio, 2)/ratio*nEff - 2
-		t := edistuv.NoncentralT{Nu: nu, Ncp: math.Sqrt(nEff) * delta}.Quantile(beta)
+		t := distuv.NoncentralT{Nu: nu, Mu: math.Sqrt(nEff) * delta}.Quantile(beta)
 		s := p.eValue(t, nu, nEff)
 		return s - 1./alpha
 	}
@@ -281,7 +266,7 @@ func getNPlanBatch(alpha, beta, delta, ratio float64, p *Mom) (int, int) {
 	// Find the bracket that wraps the root.
 	qB := distuv.Normal{Sigma: 1}.Quantile(beta)
 	guess := 2 / (delta * delta) * (qB*qB - qB*math.Sqrt(qB*qB+2*math.Log(1./alpha)) + math.Log(1./alpha))
-	a, b := edistuv.FindBracketMono(f, guess)
+	a, b := findBracketMono(f, guess)
 	// Find the root inside the bracket.
 	eps := math.Nextafter(1, 2) - 1
 	tol := math.Pow(eps, 0.25)

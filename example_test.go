@@ -48,6 +48,23 @@ func Example() {
 	// Null hypothesis rejected with only 25% (30/121) of the data needed.
 }
 
+func ExampleGetNPlan() {
+	// alpha is our desired significance level.
+	alpha := 0.05
+	// power is our desired statistical power.
+	power := 0.8
+	// deltaMin is a lower bound of the true effect size based on domain knowledge.
+	deltaMin := 0.5
+
+	nplan := evalue.GetNPlan(alpha, 1-power, deltaMin)
+	fmt.Printf("We should plan for a sample size of %d, which would achieve both our desired statistical power and significance level.\n", nplan.N)
+	fmt.Printf("The good news is we can early-stop our experiment with only %d samples on average, which is not allowed with conventional t-tests.\n", nplan.Mean)
+
+	// Output:
+	// We should plan for a sample size of 102, which would achieve both our desired statistical power and significance level.
+	// The good news is we can early-stop our experiment with only 61 samples on average, which is not allowed with conventional t-tests.
+}
+
 type datum struct {
 	group int
 	value float64
